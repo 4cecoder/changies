@@ -274,6 +274,10 @@ pub const WebServer = struct {
 
         _ = try posix.write(client_fd, handshake);
 
+        // Set socket to non-blocking mode for WebSocket handling
+        const flags = try posix.fcntl(client_fd, posix.F.GETFL, 0);
+        _ = try posix.fcntl(client_fd, posix.F.SETFL, @as(u32, @intCast(flags)) | @as(u32, 0o4000)); // O_NONBLOCK = 0o4000 on Linux
+
         std.log.info("WebSocket client connected", .{});
 
         // Handle WebSocket messages

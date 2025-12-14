@@ -537,15 +537,16 @@ pub fn main() !void {
     // Start web server if enabled
     var web_srv: ?web_server.WebServer = null;
     var web_thread: ?std.Thread = null;
+    var web_dir: ?[]const u8 = null; // Keep alive for the web server
 
     if (config.enable_web) {
         const exe_dir = try std.fs.selfExeDirPathAlloc(allocator);
         defer allocator.free(exe_dir);
 
-        const web_dir = try std.fmt.allocPrint(allocator, "{s}/../web", .{exe_dir});
-        defer allocator.free(web_dir);
+        web_dir = try std.fmt.allocPrint(allocator, "{s}/../web", .{exe_dir});
+        // Don't defer free - keep it alive for the web server
 
-        web_srv = web_server.WebServer.init(allocator, 8080, web_dir);
+        web_srv = web_server.WebServer.init(allocator, 8080, web_dir.?);
 
         // Simple command handling through globals (thread-safe via atomics)
         ctx.web_srv = &web_srv.?;
@@ -574,5 +575,10 @@ pub fn main() !void {
         if (web_thread) |thread| {
             thread.join();
         }
+    }
+
+    // Clean up web directory path
+    if (web_dir) |dir| {
+        allocator.free(dir);
     }
 }

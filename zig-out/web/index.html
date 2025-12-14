@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Changies Control Center</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Changies Control Center</h1>
+            <div class="status-indicator">
+                <span id="connection-status" class="disconnected">Disconnected</span>
+                <span id="latency-display">Latency: --ms</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Audio Level Meters -->
+            <section class="meters-section">
+                <div class="meter-group">
+                    <h3>Input Level</h3>
+                    <div class="meter-container">
+                        <div class="meter-bar" id="input-meter"></div>
+                        <div class="meter-peak" id="input-peak"></div>
+                    </div>
+                    <div class="meter-value">
+                        <span id="input-rms">-∞ dB</span>
+                        <span id="input-peak-value">Peak: -∞ dB</span>
+                    </div>
+                </div>
+
+                <div class="meter-group">
+                    <h3>Output Level</h3>
+                    <div class="meter-container">
+                        <div class="meter-bar" id="output-meter"></div>
+                        <div class="meter-peak" id="output-peak"></div>
+                    </div>
+                    <div class="meter-value">
+                        <span id="output-rms">-∞ dB</span>
+                        <span id="output-peak-value">Peak: -∞ dB</span>
+                    </div>
+                    <div class="clipping-indicator" id="clipping-indicator">
+                        <span>CLIPPING</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Effect Selection -->
+            <section class="controls-section">
+                <h2>Voice Effect</h2>
+                <div class="effect-buttons">
+                    <button class="effect-btn" data-effect="none">None</button>
+                    <button class="effect-btn" data-effect="male">Male</button>
+                    <button class="effect-btn" data-effect="female">Female</button>
+                    <button class="effect-btn" data-effect="robot">Robot</button>
+                    <button class="effect-btn" data-effect="alien">Alien</button>
+                    <button class="effect-btn" data-effect="deep">Deep</button>
+                    <button class="effect-btn" data-effect="high">High Pitch</button>
+                    <button class="effect-btn active" data-effect="custom">Custom</button>
+                </div>
+            </section>
+
+            <!-- Pitch Control -->
+            <section class="controls-section">
+                <h2>Pitch Shift</h2>
+                <div class="slider-control">
+                    <input
+                        type="range"
+                        id="pitch-slider"
+                        min="0.5"
+                        max="2.0"
+                        step="0.01"
+                        value="1.0"
+                    >
+                    <div class="slider-labels">
+                        <span>-2 octaves (0.5x)</span>
+                        <span id="pitch-value">1.00x</span>
+                        <span>+2 octaves (2.0x)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Noise Gate Control -->
+            <section class="controls-section">
+                <h2>Noise Gate</h2>
+                <div class="slider-control">
+                    <input
+                        type="range"
+                        id="gate-slider"
+                        min="-60"
+                        max="-10"
+                        step="1"
+                        value="-40"
+                    >
+                    <div class="slider-labels">
+                        <span>-60 dB</span>
+                        <span id="gate-value">-40 dB</span>
+                        <span>-10 dB</span>
+                    </div>
+                    <div class="gate-status">
+                        <span>Gate Status:</span>
+                        <span id="gate-state" class="gate-closed">CLOSED</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics -->
+            <section class="stats-section">
+                <h2>Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Buffer Size:</span>
+                        <span id="buffer-size">1024</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Sample Rate:</span>
+                        <span id="sample-rate">48000 Hz</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Processing Time:</span>
+                        <span id="processing-time">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Active Effect:</span>
+                        <span id="active-effect">custom</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Changies Voice Changer - Professional Real-Time Audio Processing</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

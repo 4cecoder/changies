@@ -20,6 +20,14 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    // Install web interface files
+    const install_web = b.addInstallDirectory(.{
+        .source_dir = b.path("web"),
+        .install_dir = .prefix,
+        .install_subdir = "web",
+    });
+    b.getInstallStep().dependOn(&install_web.step);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 

@@ -5,6 +5,7 @@ const c = @cImport({
 });
 const virtual_device = @import("virtual_device.zig");
 const web_server = @import("web_server.zig");
+const vox_chain = @import("vox_chain.zig");
 
 pub const ChangiesError = error{
     InitFailed,
@@ -45,6 +46,12 @@ const AudioConfig = struct {
     formant_shift: f32 = 1.0,
     effect: VoiceEffect = .none,
     enable_web: bool = true,
+    monitor_mode: bool = false, // When true, route output to speakers instead of virtual device
+    latency_mode: u8 = 1, // 0=Ultra-low (256), 1=Low (512), 2=Normal (1024), 3=Safe (2048)
+    latency_compensation_ms: i32 = 0, // Milliseconds to delay virtual output (-500 to +500)
+    input_device: ?[:0]const u8 = null, // Current input device name
+    output_device: ?[:0]const u8 = null, // Current output device name (virtual device)
+    monitor_device: ?[:0]const u8 = null, // Monitor output device name (speakers)
 };
 
 const NoiseGateState = struct {
@@ -69,9 +76,16 @@ const AudioContext = struct {
     config: AudioConfig,
     pa_input: ?*c.pa_simple,
     pa_output: ?*c.pa_simple,
+    pa_monitor: ?*c.pa_simple, // Monitoring output (to speakers)
     allocator: std.mem.Allocator,
     running: std.atomic.Value(bool),
+    reconnect_needed: std.atomic.Value(bool), // Signal audio thread to reconnect
     noise_gate_state: NoiseGateState,
+    vox_chain_processor: vox_chain.VoxChain,
+    // Latency compensation delay buffer
+    delay_buffer: ?[]f32, // Ring buffer for latency compensation
+    delay_write_pos: usize, // Write position in delay buffer
+    delay_samples: usize, // Number of samples to delay
     // Audio statistics (thread-safe atomic storage)
     input_rms: std.atomic.Value(f32),
     input_peak: std.atomic.Value(f32),
@@ -84,9 +98,15 @@ const AudioContext = struct {
             .config = config,
             .pa_input = null,
             .pa_output = null,
+            .pa_monitor = null,
             .allocator = allocator,
             .running = std.atomic.Value(bool).init(false),
+            .reconnect_needed = std.atomic.Value(bool).init(false),
             .noise_gate_state = NoiseGateState.init(config.sample_rate),
+            .vox_chain_processor = vox_chain.VoxChain.init(allocator, config.sample_rate),
+            .delay_buffer = null,
+            .delay_write_pos = 0,
+            .delay_samples = 0,
             .input_rms = std.atomic.Value(f32).init(0.0),
             .input_peak = std.atomic.Value(f32).init(0.0),
             .output_rms = std.atomic.Value(f32).init(0.0),
@@ -97,6 +117,9 @@ const AudioContext = struct {
 
     pub fn deinit(self: *AudioContext) void {
         self.cleanup();
+        if (self.delay_buffer) |buf| {
+            self.allocator.free(buf);
+        }
     }
 
     pub fn initAudio(self: *AudioContext, input_source: [:0]const u8, output_sink: [:0]const u8) !void {
@@ -145,6 +168,31 @@ const AudioContext = struct {
             return ChangiesError.AudioError;
         }
 
+        // Monitor output stream (to user-selected speakers or default)
+        const monitor_sink_ptr: ?[*:0]const u8 = if (self.config.monitor_device) |dev| dev.ptr else null;
+        self.pa_monitor = c.pa_simple_new(
+            null,
+            "changies_monitor",
+            c.PA_STREAM_PLAYBACK,
+            monitor_sink_ptr, // User-selected or default output (speakers)
+            "Monitor output",
+            &ss,
+            null,
+            null,
+            &error_code,
+        );
+
+        if (self.pa_monitor == null) {
+            std.log.warn("Failed to create monitor output (optional): {s}", .{c.pa_strerror(error_code)});
+            // Don't fail - monitoring is optional
+        } else {
+            if (self.config.monitor_device) |dev| {
+                std.log.info("Monitor output connected to: {s}", .{dev});
+            } else {
+                std.log.info("Monitor output connected to default sink", .{});
+            }
+        }
+
         std.log.info("Audio initialized: {d}Hz, {d} channels", .{ self.config.sample_rate, self.config.channels });
     }
 
@@ -156,6 +204,10 @@ const AudioContext = struct {
         if (self.pa_output) |pa| {
             c.pa_simple_free(pa);
             self.pa_output = null;
+        }
+        if (self.pa_monitor) |pa| {
+            c.pa_simple_free(pa);
+            self.pa_monitor = null;
         }
     }
 
@@ -197,6 +249,131 @@ const AudioContext = struct {
     pub fn setNoiseGateThreshold(self: *AudioContext, threshold: f32) void {
         self.noise_gate_state.threshold = threshold;
         std.log.info("Noise gate threshold changed to: {d:.4}", .{threshold});
+    }
+
+    pub fn setVoxChainEnabled(self: *AudioContext, enabled: bool) void {
+        self.vox_chain_processor.setEnabled(enabled);
+        std.log.info("Vox chain enabled: {}", .{enabled});
+    }
+
+    pub fn setMonitorMode(self: *AudioContext, enabled: bool) void {
+        const old_state = self.config.monitor_mode;
+        self.config.monitor_mode = enabled;
+
+        if (enabled) {
+            std.log.info("Monitor mode ENABLED (was: {}) - Audio will now route to speakers", .{old_state});
+            if (self.pa_monitor) |_| {
+                std.log.info("  → pa_monitor stream is ready", .{});
+            } else {
+                std.log.warn("  → pa_monitor stream is NULL! Monitor won't work.", .{});
+            }
+        } else {
+            std.log.info("Monitor mode DISABLED (was: {}) - Audio only to virtual device", .{old_state});
+        }
+    }
+
+    pub fn setLatencyMode(self: *AudioContext, mode: u8) void {
+        self.config.latency_mode = @min(mode, 3);
+        const buffer_sizes = [_]u32{ 256, 512, 1024, 2048 };
+        const new_size = buffer_sizes[self.config.latency_mode];
+        std.log.info("Latency mode changed to: {} (buffer: {} samples, ~{d:.1f}ms)", .{
+            self.config.latency_mode,
+            new_size,
+            @as(f32, @floatFromInt(new_size)) / @as(f32, @floatFromInt(self.config.sample_rate)) * 1000.0,
+        });
+        std.log.warn("Latency changes require restart to take effect", .{});
+    }
+
+    pub fn getBufferSizeForLatencyMode(latency_mode: u8) u32 {
+        const buffer_sizes = [_]u32{ 256, 512, 1024, 2048 };
+        return buffer_sizes[@min(latency_mode, 3)];
+    }
+
+    pub fn setInputDevice(self: *AudioContext, device_name: []const u8) void {
+        // Allocate new device name as null-terminated string
+        const device_z = self.allocator.dupeZ(u8, device_name) catch |err| {
+            std.log.err("Failed to allocate input device name: {}", .{err});
+            return;
+        };
+
+        // Free old device name if exists
+        if (self.config.input_device) |old| {
+            self.allocator.free(old);
+        }
+
+        self.config.input_device = device_z;
+        self.reconnect_needed.store(true, .monotonic);
+        std.log.info("Input device will change to: {s} (reconnecting...)", .{device_name});
+    }
+
+    pub fn setOutputDevice(self: *AudioContext, device_name: []const u8) void {
+        // Allocate new device name as null-terminated string
+        const device_z = self.allocator.dupeZ(u8, device_name) catch |err| {
+            std.log.err("Failed to allocate output device name: {}", .{err});
+            return;
+        };
+
+        // Free old device name if exists
+        if (self.config.monitor_device) |old| {
+            self.allocator.free(old);
+        }
+
+        self.config.monitor_device = device_z;
+        self.reconnect_needed.store(true, .monotonic);
+        std.log.info("Monitor output device will change to: {s} (reconnecting...)", .{device_name});
+    }
+
+    pub fn setLatencyCompensation(self: *AudioContext, compensation_ms: i32) void {
+        const clamped_ms = @max(-500, @min(500, compensation_ms));
+        self.config.latency_compensation_ms = clamped_ms;
+
+        // Calculate delay samples (absolute value since we only support positive delay for now)
+        const abs_ms: f32 = @abs(@as(f32, @floatFromInt(clamped_ms)));
+        const delay_seconds = abs_ms / 1000.0;
+        self.delay_samples = @intFromFloat(delay_seconds * @as(f32, @floatFromInt(self.config.sample_rate)));
+
+        // Reallocate delay buffer if needed
+        if (self.delay_samples > 0) {
+            if (self.delay_buffer) |old_buf| {
+                self.allocator.free(old_buf);
+            }
+
+            self.delay_buffer = self.allocator.alloc(f32, self.delay_samples) catch |err| {
+                std.log.err("Failed to allocate delay buffer: {}", .{err});
+                self.delay_samples = 0;
+                return;
+            };
+
+            // Initialize buffer to silence
+            @memset(self.delay_buffer.?, 0.0);
+            self.delay_write_pos = 0;
+
+            std.log.info("Latency compensation: {}ms ({} samples delay)", .{ clamped_ms, self.delay_samples });
+        } else {
+            if (self.delay_buffer) |old_buf| {
+                self.allocator.free(old_buf);
+                self.delay_buffer = null;
+            }
+            self.delay_samples = 0;
+            self.delay_write_pos = 0;
+            std.log.info("Latency compensation disabled", .{});
+        }
+    }
+
+    pub fn loadVoxPreset(self: *AudioContext, preset: []const u8) void {
+        if (std.mem.eql(u8, preset, "broadcast")) {
+            self.vox_chain_processor.loadBroadcastPreset();
+            std.log.info("Loaded Broadcast preset", .{});
+        } else if (std.mem.eql(u8, preset, "podcast")) {
+            self.vox_chain_processor.loadPodcastPreset();
+            std.log.info("Loaded Podcast preset", .{});
+        } else if (std.mem.eql(u8, preset, "gaming")) {
+            self.vox_chain_processor.loadGamingPreset();
+            std.log.info("Loaded Gaming preset", .{});
+        } else if (std.mem.eql(u8, preset, "clean")) {
+            self.vox_chain_processor.loadCleanPreset();
+            std.log.info("Loaded Clean preset", .{});
+        }
     }
 };
 
@@ -396,6 +573,60 @@ fn audioProcessingThread(ctx: *AudioContext) void {
     std.log.info("Audio processing started with effect: {s}", .{@tagName(ctx.config.effect)});
 
     while (ctx.running.load(.monotonic)) {
+        // Check if reconnection is needed
+        if (ctx.reconnect_needed.load(.monotonic)) {
+            std.log.info("Reconnecting audio streams...", .{});
+            ctx.cleanup();
+
+            // Determine input source
+            const input_source: [:0]const u8 = ctx.config.input_device orelse "";
+
+            // Determine output sinks
+            const output_sink: [:0]const u8 = "changies_output"; // Always virtual device for Discord
+            const monitor_sink: [:0]const u8 = ctx.config.monitor_device orelse ""; // User-selected monitor device
+
+            ctx.initAudio(input_source, output_sink) catch |err| {
+                std.log.err("Failed to reconnect audio: {}", .{err});
+                ctx.running.store(false, .monotonic);
+                break;
+            };
+
+            // Recreate monitor stream with new device
+            if (monitor_sink.len > 0) {
+                var error_code: c_int = 0;
+                const ss = c.pa_sample_spec{
+                    .format = c.PA_SAMPLE_FLOAT32LE,
+                    .rate = ctx.config.sample_rate,
+                    .channels = @intCast(ctx.config.channels),
+                };
+
+                if (ctx.pa_monitor) |old_mon| {
+                    c.pa_simple_free(old_mon);
+                }
+
+                ctx.pa_monitor = c.pa_simple_new(
+                    null,
+                    "changies_monitor",
+                    c.PA_STREAM_PLAYBACK,
+                    monitor_sink.ptr,
+                    "Monitor output",
+                    &ss,
+                    null,
+                    null,
+                    &error_code,
+                );
+
+                if (ctx.pa_monitor == null) {
+                    std.log.warn("Failed to reconnect monitor output: {s}", .{c.pa_strerror(error_code)});
+                } else {
+                    std.log.info("Monitor output reconnected to: {s}", .{monitor_sink});
+                }
+            }
+
+            ctx.reconnect_needed.store(false, .monotonic);
+            std.log.info("Audio streams reconnected successfully", .{});
+        }
+
         if (ctx.pa_input) |pa_in| {
             var error_code: c_int = 0;
             const bytes_to_read = buffer_size * @sizeOf(f32);
@@ -416,6 +647,7 @@ fn audioProcessingThread(ctx: *AudioContext) void {
 
             // Audio processing chain for clean vocal output
             applyNoiseGate(output_buffer, &ctx.noise_gate_state); // Remove background noise
+            ctx.vox_chain_processor.process(output_buffer); // Professional vocal chain
 
             if (ctx.config.effect != .none) {
                 applyEffect(output_buffer, ctx.config.effect, ctx.config, temp_buffer);
@@ -437,17 +669,107 @@ fn audioProcessingThread(ctx: *AudioContext) void {
                 srv.updateStats(stats);
             }
 
-            // Write to output
-            if (ctx.pa_output) |pa_out| {
-                if (c.pa_simple_write(pa_out, output_buffer.ptr, bytes_to_read, &error_code) < 0) {
-                    std.log.err("PulseAudio write error: {s}", .{c.pa_strerror(error_code)});
-                    continue;
+            // Write to output with optional latency compensation
+            // Monitor output gets immediate audio (for listening)
+            if (ctx.config.monitor_mode) {
+                if (ctx.pa_monitor) |pa_mon| {
+                    if (c.pa_simple_write(pa_mon, output_buffer.ptr, bytes_to_read, &error_code) < 0) {
+                        std.log.err("PulseAudio monitor write error: {s}", .{c.pa_strerror(error_code)});
+                    }
+                }
+            }
+
+            // Virtual device output (for Discord/apps) with latency compensation
+            if (ctx.delay_buffer) |delay_buf| {
+                // Apply latency compensation using ring buffer
+                for (output_buffer, 0..) |sample, i| {
+                    // Read delayed sample from ring buffer
+                    const delayed_sample = delay_buf[ctx.delay_write_pos];
+
+                    // Write current sample to ring buffer
+                    delay_buf[ctx.delay_write_pos] = sample;
+
+                    // Move write position
+                    ctx.delay_write_pos = (ctx.delay_write_pos + 1) % ctx.delay_samples;
+
+                    // Store delayed sample for output
+                    temp_buffer[i] = delayed_sample;
+                }
+
+                // Write delayed audio to virtual device
+                if (ctx.pa_output) |pa_out| {
+                    if (c.pa_simple_write(pa_out, temp_buffer.ptr, bytes_to_read, &error_code) < 0) {
+                        std.log.err("PulseAudio write error: {s}", .{c.pa_strerror(error_code)});
+                    }
+                }
+            } else {
+                // No latency compensation - write directly
+                if (ctx.pa_output) |pa_out| {
+                    if (c.pa_simple_write(pa_out, output_buffer.ptr, bytes_to_read, &error_code) < 0) {
+                        std.log.err("PulseAudio write error: {s}", .{c.pa_strerror(error_code)});
+                    }
                 }
             }
         }
     }
 
     std.log.info("Audio processing stopped", .{});
+}
+
+// Global context for command handling (accessed from web server callback)
+var global_ctx: ?*AudioContext = null;
+
+fn webCommandHandler(command: []const u8, value_json: []const u8) void {
+    std.log.info("WebSocket command received: '{s}' = '{s}'", .{ command, value_json });
+    const ctx = global_ctx orelse return;
+
+    if (std.mem.eql(u8, command, "effect")) {
+        // Parse effect name from JSON value
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const effect_str = value_json[value_start + 1 .. value_end];
+
+        if (VoiceEffect.fromString(effect_str)) |effect| {
+            ctx.setEffect(effect);
+        }
+    } else if (std.mem.eql(u8, command, "pitch")) {
+        // Parse numeric value
+        const pitch = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        ctx.setPitchShift(pitch);
+    } else if (std.mem.eql(u8, command, "gate_threshold")) {
+        const threshold = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        ctx.setNoiseGateThreshold(threshold);
+    } else if (std.mem.eql(u8, command, "vox_enabled")) {
+        // Parse boolean from JSON
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        ctx.setVoxChainEnabled(enabled);
+    } else if (std.mem.eql(u8, command, "vox_preset")) {
+        // Parse preset name from JSON value
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const preset = value_json[value_start + 1 .. value_end];
+        ctx.loadVoxPreset(preset);
+    } else if (std.mem.eql(u8, command, "monitor")) {
+        // Parse boolean for monitor mode
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        ctx.setMonitorMode(enabled);
+    } else if (std.mem.eql(u8, command, "input_device")) {
+        // Parse device name from JSON value
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const device_name = value_json[value_start + 1 .. value_end];
+        ctx.setInputDevice(device_name);
+    } else if (std.mem.eql(u8, command, "output_device")) {
+        // Parse device name from JSON value
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const device_name = value_json[value_start + 1 .. value_end];
+        ctx.setOutputDevice(device_name);
+    } else if (std.mem.eql(u8, command, "latency_compensation")) {
+        // Parse integer value for latency compensation in milliseconds
+        const latency_ms = std.fmt.parseInt(i32, std.mem.trim(u8, value_json, " \t\r\n"), 10) catch return;
+        ctx.setLatencyCompensation(latency_ms);
+    }
 }
 
 fn printHelp() void {
@@ -537,7 +859,7 @@ pub fn main() !void {
     // Start web server if enabled
     var web_srv: ?web_server.WebServer = null;
     var web_thread: ?std.Thread = null;
-    var web_dir: ?[]const u8 = null; // Keep alive for the web server
+    var web_dir: ?[]const u8 = null; // Keep alive for web server
 
     if (config.enable_web) {
         const exe_dir = try std.fs.selfExeDirPathAlloc(allocator);
@@ -550,6 +872,10 @@ pub fn main() !void {
 
         // Simple command handling through globals (thread-safe via atomics)
         ctx.web_srv = &web_srv.?;
+        global_ctx = &ctx;
+
+        // Set command callback for web server
+        web_srv.?.setCommandCallback(&webCommandHandler);
 
         web_thread = try web_srv.?.start();
         std.log.info("Web interface available at http://localhost:8080", .{});

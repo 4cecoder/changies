@@ -176,6 +176,12 @@ pub const WebServer = struct {
     }
 
     fn handleHttp(self: *WebServer, client_fd: posix.socket_t, request: []const u8) !void {
+        // Check for /api/devices endpoint
+        if (std.mem.indexOf(u8, request, "GET /api/devices") != null) {
+            try self.handleDevicesApi(client_fd);
+            return;
+        }
+
         // Parse request path
         const path = try self.extractPath(request);
 
@@ -315,13 +321,18 @@ pub const WebServer = struct {
                 return;
             }
 
+            std.log.info("WebSocket frame received: {} bytes", .{bytes_read});
+
             // Decode WebSocket frame
             const payload = self.decodeWebSocketFrame(frame_buffer[0..bytes_read]) catch |err| {
                 std.log.err("Failed to decode WebSocket frame: {}", .{err});
                 continue;
             };
 
+            std.log.info("WebSocket payload decoded: {} bytes", .{payload.len});
+
             if (payload.len > 0) {
+                std.log.info("Calling handleCommand with payload: {s}", .{payload});
                 self.handleCommand(payload) catch |err| {
                     std.log.err("Failed to handle command: {}", .{err});
                 };
@@ -380,7 +391,6 @@ pub const WebServer = struct {
     }
 
     fn decodeWebSocketFrame(self: *WebServer, frame: []const u8) ![]const u8 {
-        _ = self;
         if (frame.len < 2) return error.InvalidFrame;
 
         const opcode: u8 = frame[0] & 0x0F;
@@ -414,10 +424,17 @@ pub const WebServer = struct {
 
         // Unmask if necessary
         if (masked) {
-            // Note: We can't modify the const slice, so we'd need to allocate
-            // For now, this is a simplified version that doesn't unmask
-            // In production, you'd allocate a buffer and unmask into it
-            return payload;
+            // Allocate buffer for unmasked payload
+            const unmasked = try self.allocator.alloc(u8, payload_len);
+            // Note: We keep this allocated - it will be freed when the WebServer deinit is called
+            // For a production system, you'd want better memory management
+
+            // XOR each byte with the mask
+            for (payload, 0..) |byte, i| {
+                unmasked[i] = byte ^ mask[i % 4];
+            }
+
+            return unmasked;
         }
 
         return payload;
@@ -441,5 +458,116 @@ pub const WebServer = struct {
         if (self.command_callback) |callback| {
             callback(command, payload[value_content_start..]);
         }
+    }
+
+    fn handleDevicesApi(self: *WebServer, client_fd: posix.socket_t) !void {
+        const result = std.process.Child.run(.{
+            .allocator = self.allocator,
+            .argv = &[_][]const u8{ "pactl", "list", "sources", "short" },
+        }) catch |err| {
+            std.log.err("Failed to list sources: {}", .{err});
+            const response = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+            _ = posix.write(client_fd, response) catch {};
+            return;
+        };
+        defer self.allocator.free(result.stdout);
+        defer self.allocator.free(result.stderr);
+
+        const sink_result = std.process.Child.run(.{
+            .allocator = self.allocator,
+            .argv = &[_][]const u8{ "pactl", "list", "sinks", "short" },
+        }) catch |err| {
+            std.log.err("Failed to list sinks: {}", .{err});
+            const response = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+            _ = posix.write(client_fd, response) catch {};
+            return;
+        };
+        defer self.allocator.free(sink_result.stdout);
+        defer self.allocator.free(sink_result.stderr);
+
+        // Build JSON manually with fixed buffer and manual string concatenation
+        var json_buf: [16384]u8 = undefined;
+        var offset: usize = 0;
+
+        const sources_header = "{\"sources\":[";
+        @memcpy(json_buf[offset..][0..sources_header.len], sources_header);
+        offset += sources_header.len;
+
+        // Parse sources (inputs)
+        var sources = std.mem.splitScalar(u8, result.stdout, '\n');
+        var first_source = true;
+        while (sources.next()) |line| {
+            if (line.len == 0) continue;
+
+            // Parse: ID NAME DRIVER FORMAT STATE
+            var parts = std.mem.tokenizeScalar(u8, line, '\t');
+            _ = parts.next(); // Skip ID
+            const name = parts.next() orelse continue;
+            _ = parts.next(); // Skip driver
+            const format = parts.next() orelse "";
+            const state = parts.next() orelse "";
+
+            // Skip changies_output.monitor devices
+            if (std.mem.indexOf(u8, name, "changies_output") != null) continue;
+
+            if (!first_source) {
+                json_buf[offset] = ',';
+                offset += 1;
+            }
+            first_source = false;
+
+            const entry = try std.fmt.bufPrint(json_buf[offset..],
+                "{{\"name\":\"{s}\",\"description\":\"{s}\",\"format\":\"{s}\",\"state\":\"{s}\"}}",
+                .{ name, name, format, state });
+            offset += entry.len;
+        }
+
+        const sinks_header = "],\"sinks\":[";
+        @memcpy(json_buf[offset..][0..sinks_header.len], sinks_header);
+        offset += sinks_header.len;
+
+        // Parse sinks (outputs)
+        var sinks = std.mem.splitScalar(u8, sink_result.stdout, '\n');
+        var first_sink = true;
+        while (sinks.next()) |line| {
+            if (line.len == 0) continue;
+
+            var parts = std.mem.tokenizeScalar(u8, line, '\t');
+            _ = parts.next(); // Skip ID
+            const name = parts.next() orelse continue;
+            _ = parts.next(); // Skip driver
+            const format = parts.next() orelse "";
+            const state = parts.next() orelse "";
+
+            if (!first_sink) {
+                json_buf[offset] = ',';
+                offset += 1;
+            }
+            first_sink = false;
+
+            const entry = try std.fmt.bufPrint(json_buf[offset..],
+                "{{\"name\":\"{s}\",\"description\":\"{s}\",\"format\":\"{s}\",\"state\":\"{s}\"}}",
+                .{ name, name, format, state });
+            offset += entry.len;
+        }
+
+        const footer = "]}";
+        @memcpy(json_buf[offset..][0..footer.len], footer);
+        offset += footer.len;
+
+        const json_body = json_buf[0..offset];
+
+        // Send HTTP response
+        var response_buf: [1024]u8 = undefined;
+        const response_header = try std.fmt.bufPrint(&response_buf,
+            "HTTP/1.1 200 OK\r\n" ++
+            "Content-Type: application/json\r\n" ++
+            "Content-Length: {d}\r\n" ++
+            "Access-Control-Allow-Origin: *\r\n" ++
+            "\r\n",
+            .{json_body.len});
+
+        _ = try posix.write(client_fd, response_header);
+        _ = try posix.write(client_fd, json_body);
     }
 };

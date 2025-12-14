@@ -3,135 +3,218 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Changies Control Center</title>
+    <title>CHANGIES VOX CHAIN</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Changies Control Center</h1>
-            <div class="status-indicator">
-                <span id="connection-status" class="disconnected">Disconnected</span>
-                <span id="latency-display">Latency: --ms</span>
+            <div class="header-left">
+                <h1>CHANGIES VOX CHAIN</h1>
+            </div>
+            <div class="header-right">
+                <span id="connection-status" class="status-badge disconnected">DISCONNECTED</span>
             </div>
         </header>
 
         <main>
-            <!-- Audio Level Meters -->
-            <section class="meters-section">
-                <div class="meter-group">
-                    <h3>Input Level</h3>
-                    <div class="meter-container">
-                        <div class="meter-bar" id="input-meter"></div>
-                        <div class="meter-peak" id="input-peak"></div>
-                    </div>
-                    <div class="meter-value">
-                        <span id="input-rms">-∞ dB</span>
-                        <span id="input-peak-value">Peak: -∞ dB</span>
-                    </div>
+            <!-- AUDIO ROUTING SECTION -->
+            <section class="section" id="routing-section">
+                <div class="section-header" onclick="toggleSection('routing-section')">
+                    <span class="collapse-icon">▼</span>
+                    <h2>AUDIO ROUTING</h2>
                 </div>
-
-                <div class="meter-group">
-                    <h3>Output Level</h3>
-                    <div class="meter-container">
-                        <div class="meter-bar" id="output-meter"></div>
-                        <div class="meter-peak" id="output-peak"></div>
-                    </div>
-                    <div class="meter-value">
-                        <span id="output-rms">-∞ dB</span>
-                        <span id="output-peak-value">Peak: -∞ dB</span>
-                    </div>
-                    <div class="clipping-indicator" id="clipping-indicator">
-                        <span>CLIPPING</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Effect Selection -->
-            <section class="controls-section">
-                <h2>Voice Effect</h2>
-                <div class="effect-buttons">
-                    <button class="effect-btn" data-effect="none">None</button>
-                    <button class="effect-btn" data-effect="male">Male</button>
-                    <button class="effect-btn" data-effect="female">Female</button>
-                    <button class="effect-btn" data-effect="robot">Robot</button>
-                    <button class="effect-btn" data-effect="alien">Alien</button>
-                    <button class="effect-btn" data-effect="deep">Deep</button>
-                    <button class="effect-btn" data-effect="high">High Pitch</button>
-                    <button class="effect-btn active" data-effect="custom">Custom</button>
-                </div>
-            </section>
-
-            <!-- Pitch Control -->
-            <section class="controls-section">
-                <h2>Pitch Shift</h2>
-                <div class="slider-control">
-                    <input
-                        type="range"
-                        id="pitch-slider"
-                        min="0.5"
-                        max="2.0"
-                        step="0.01"
-                        value="1.0"
-                    >
-                    <div class="slider-labels">
-                        <span>-2 octaves (0.5x)</span>
-                        <span id="pitch-value">1.00x</span>
-                        <span>+2 octaves (2.0x)</span>
+                <div class="section-content">
+                    <div class="routing-controls">
+                        <div class="device-select-row">
+                            <label>Input Device:</label>
+                            <select id="input-device-select" class="device-select">
+                                <option value="">Loading...</option>
+                            </select>
+                        </div>
+                        <div class="device-select-row">
+                            <label>Output Device:</label>
+                            <select id="output-device-select" class="device-select">
+                                <option value="">Loading...</option>
+                            </select>
+                        </div>
+                        <div class="device-select-row">
+                            <label class="toggle-switch" title="Monitor Mode - Hear processed audio through speakers">
+                                <input type="checkbox" id="monitor-enabled">
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-label">🎧 MONITOR MODE</span>
+                            </label>
+                        </div>
+                        <div class="control-row">
+                            <label>Latency Comp:</label>
+                            <input type="range" id="latency-slider" min="0" max="500" step="10" value="0">
+                            <span id="latency-value" class="control-value">0 ms</span>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Noise Gate Control -->
-            <section class="controls-section">
-                <h2>Noise Gate</h2>
-                <div class="slider-control">
-                    <input
-                        type="range"
-                        id="gate-slider"
-                        min="-60"
-                        max="-10"
-                        step="1"
-                        value="-40"
-                    >
-                    <div class="slider-labels">
-                        <span>-60 dB</span>
-                        <span id="gate-value">-40 dB</span>
-                        <span>-10 dB</span>
-                    </div>
-                    <div class="gate-status">
-                        <span>Gate Status:</span>
-                        <span id="gate-state" class="gate-closed">CLOSED</span>
+            <!-- METERS SECTION -->
+            <section class="section collapsed" id="meters-section">
+                <div class="section-header" onclick="toggleSection('meters-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>METERS</h2>
+                </div>
+                <div class="section-content">
+                    <div class="meters-grid">
+                        <div class="meter-group">
+                            <div class="meter-label">
+                                <span>INPUT</span>
+                                <span id="input-db" class="meter-value">-∞ dB</span>
+                            </div>
+                            <div class="meter-bar-container">
+                                <div class="meter-bar" id="input-meter"></div>
+                                <div class="meter-peak" id="input-peak"></div>
+                            </div>
+                        </div>
+                        <div class="meter-group">
+                            <div class="meter-label">
+                                <span>OUTPUT</span>
+                                <span id="output-db" class="meter-value">-∞ dB</span>
+                            </div>
+                            <div class="meter-bar-container">
+                                <div class="meter-bar" id="output-meter"></div>
+                                <div class="meter-peak" id="output-peak"></div>
+                                <div id="clip-indicator" class="clip-indicator">CLIP</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Statistics -->
-            <section class="stats-section">
-                <h2>Statistics</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Buffer Size:</span>
-                        <span id="buffer-size">1024</span>
+            <!-- VOICE EFFECTS SECTION -->
+            <section class="section" id="effects-section">
+                <div class="section-header" onclick="toggleSection('effects-section')">
+                    <span class="collapse-icon">▼</span>
+                    <h2>VOICE EFFECTS</h2>
+                </div>
+                <div class="section-content">
+                    <div class="effect-grid">
+                        <button class="effect-btn active" data-effect="none">None</button>
+                        <button class="effect-btn" data-effect="male">Male</button>
+                        <button class="effect-btn" data-effect="female">Female</button>
+                        <button class="effect-btn" data-effect="robot">Robot</button>
+                        <button class="effect-btn" data-effect="alien">Alien</button>
+                        <button class="effect-btn" data-effect="deep">Deep</button>
+                        <button class="effect-btn" data-effect="high">High</button>
+                        <button class="effect-btn" data-effect="custom">Custom</button>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Sample Rate:</span>
-                        <span id="sample-rate">48000 Hz</span>
+                    <div class="control-row">
+                        <label>Pitch:</label>
+                        <input type="range" id="pitch-slider" min="0.5" max="2.0" step="0.01" value="1.0">
+                        <span id="pitch-value" class="control-value">1.00x</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Processing Time:</span>
-                        <span id="processing-time">-- ms</span>
+                </div>
+            </section>
+
+            <!-- VOCAL CHAIN SECTION -->
+            <section class="section" id="vox-section">
+                <div class="section-header" onclick="toggleSection('vox-section')">
+                    <span class="collapse-icon">▼</span>
+                    <h2>VOCAL CHAIN</h2>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="vox-enabled" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="vox-controls">
+                        <div class="vox-param-compact">
+                            <span class="param-label">HPF:</span>
+                            <span class="param-display" id="hpf-display">80Hz</span>
+                        </div>
+                        <div class="vox-param-compact">
+                            <span class="param-label">EQ Low:</span>
+                            <span class="param-display" id="eq-low-display">+3dB @ 120Hz</span>
+                        </div>
+                        <div class="vox-param-compact">
+                            <span class="param-label">EQ Mid:</span>
+                            <span class="param-display" id="eq-mid-display">+5dB @ 3kHz Q:2</span>
+                        </div>
+                        <div class="vox-param-compact">
+                            <span class="param-label">EQ High:</span>
+                            <span class="param-display" id="eq-high-display">+2dB @ 10kHz</span>
+                        </div>
+                        <div class="vox-param-compact">
+                            <span class="param-label">De-ess:</span>
+                            <span class="param-display" id="deess-display">-38dB Ratio:4:1</span>
+                        </div>
+                        <div class="vox-param-compact">
+                            <span class="param-label">Comp:</span>
+                            <span class="param-display" id="comp-display">-18dB 4:1 A:5 R:50</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Active Effect:</span>
-                        <span id="active-effect">custom</span>
+                </div>
+            </section>
+
+            <!-- PRESETS SECTION -->
+            <section class="section" id="presets-section">
+                <div class="section-header" onclick="toggleSection('presets-section')">
+                    <span class="collapse-icon">▼</span>
+                    <h2>PRESETS</h2>
+                </div>
+                <div class="section-content">
+                    <div class="preset-grid">
+                        <button class="preset-btn active" data-preset="broadcast">Broadcast</button>
+                        <button class="preset-btn" data-preset="podcast">Podcast</button>
+                        <button class="preset-btn" data-preset="gaming">Gaming</button>
+                        <button class="preset-btn" data-preset="clean">Clean</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NOISE GATE SECTION -->
+            <section class="section collapsed" id="gate-section">
+                <div class="section-header" onclick="toggleSection('gate-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>NOISE GATE</h2>
+                    <span id="gate-state" class="gate-badge closed">CLOSED</span>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Threshold:</label>
+                        <input type="range" id="gate-slider" min="-60" max="-10" step="1" value="-40">
+                        <span id="gate-value" class="control-value">-40 dB</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STATS SECTION -->
+            <section class="section collapsed" id="stats-section">
+                <div class="section-header" onclick="toggleSection('stats-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>STATISTICS</h2>
+                </div>
+                <div class="section-content">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span>Latency:</span>
+                            <span id="latency">--ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Processing:</span>
+                            <span id="processing-time">--ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Sample Rate:</span>
+                            <span>48kHz</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Buffer:</span>
+                            <span>1024</span>
+                        </div>
                     </div>
                 </div>
             </section>
         </main>
 
         <footer>
-            <p>Changies Voice Changer - Professional Real-Time Audio Processing</p>
+            <p>Professional Real-Time Vocal Processing</p>
         </footer>
     </div>
 

@@ -6,6 +6,7 @@ const c = @cImport({
 const virtual_device = @import("virtual_device.zig");
 const web_server = @import("web_server.zig");
 const vox_chain = @import("vox_chain.zig");
+const effects_chain = @import("effects_chain.zig");
 
 pub const ChangiesError = error{
     InitFailed,
@@ -82,6 +83,7 @@ const AudioContext = struct {
     reconnect_needed: std.atomic.Value(bool), // Signal audio thread to reconnect
     noise_gate_state: NoiseGateState,
     vox_chain_processor: vox_chain.VoxChain,
+    effects_chain_processor: effects_chain.EffectsChain, // Professional music production effects
     // Latency compensation delay buffer
     delay_buffer: ?[]f32, // Ring buffer for latency compensation
     delay_write_pos: usize, // Write position in delay buffer
@@ -104,6 +106,7 @@ const AudioContext = struct {
             .reconnect_needed = std.atomic.Value(bool).init(false),
             .noise_gate_state = NoiseGateState.init(config.sample_rate),
             .vox_chain_processor = vox_chain.VoxChain.init(allocator, config.sample_rate),
+            .effects_chain_processor = try effects_chain.EffectsChain.init(allocator, config.sample_rate),
             .delay_buffer = null,
             .delay_write_pos = 0,
             .delay_samples = 0,
@@ -117,6 +120,7 @@ const AudioContext = struct {
 
     pub fn deinit(self: *AudioContext) void {
         self.cleanup();
+        self.effects_chain_processor.deinit();
         if (self.delay_buffer) |buf| {
             self.allocator.free(buf);
         }
@@ -276,7 +280,7 @@ const AudioContext = struct {
         self.config.latency_mode = @min(mode, 3);
         const buffer_sizes = [_]u32{ 256, 512, 1024, 2048 };
         const new_size = buffer_sizes[self.config.latency_mode];
-        std.log.info("Latency mode changed to: {} (buffer: {} samples, ~{d:.1f}ms)", .{
+        std.log.info("Latency mode changed to: {} (buffer: {} samples, ~{d:.1}ms)", .{
             self.config.latency_mode,
             new_size,
             @as(f32, @floatFromInt(new_size)) / @as(f32, @floatFromInt(self.config.sample_rate)) * 1000.0,
@@ -653,6 +657,9 @@ fn audioProcessingThread(ctx: *AudioContext) void {
                 applyEffect(output_buffer, ctx.config.effect, ctx.config, temp_buffer);
             }
 
+            // Professional music production effects (Auto-Tune, Reverb, Delay, etc.)
+            ctx.effects_chain_processor.process(output_buffer, output_buffer);
+
             applySoftLimiter(output_buffer); // Prevent clipping, ensure clean signal
 
             // Update output statistics
@@ -769,6 +776,286 @@ fn webCommandHandler(command: []const u8, value_json: []const u8) void {
         // Parse integer value for latency compensation in milliseconds
         const latency_ms = std.fmt.parseInt(i32, std.mem.trim(u8, value_json, " \t\r\n"), 10) catch return;
         ctx.setLatencyCompensation(latency_ms);
+    }
+
+    // ===== PROFESSIONAL MUSIC PRODUCTION EFFECTS =====
+
+    // Auto-Tune Controls
+    else if (std.mem.eql(u8, command, "autotune_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.autotune) |*autotune| {
+            autotune.setEnabled(enabled);
+            std.log.info("Auto-Tune enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "autotune_key")) {
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const key_str = value_json[value_start + 1 .. value_end];
+        if (ctx.effects_chain_processor.autotune) |*autotune| {
+            const autotune_mod = @import("effects/autotune.zig");
+            if (autotune_mod.MusicalKey.fromString(key_str)) |key| {
+                autotune.setKey(key);
+                std.log.info("Auto-Tune key: {s}", .{key_str});
+            }
+        }
+    } else if (std.mem.eql(u8, command, "autotune_scale")) {
+        const value_start = std.mem.indexOf(u8, value_json, "\"") orelse return;
+        const value_end = std.mem.indexOfPos(u8, value_json, value_start + 1, "\"") orelse return;
+        const scale_str = value_json[value_start + 1 .. value_end];
+        if (ctx.effects_chain_processor.autotune) |*autotune| {
+            const autotune_mod = @import("effects/autotune.zig");
+            if (autotune_mod.MusicalScale.fromString(scale_str)) |scale| {
+                autotune.setScale(scale);
+                std.log.info("Auto-Tune scale: {s}", .{scale_str});
+            }
+        }
+    } else if (std.mem.eql(u8, command, "autotune_retune_speed")) {
+        const speed = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.autotune) |*autotune| {
+            autotune.setRetuneSpeed(speed / 100.0); // Convert from 0-100 to 0.0-1.0
+            std.log.info("Auto-Tune retune speed: {d:.2}", .{speed});
+        }
+    } else if (std.mem.eql(u8, command, "autotune_correction")) {
+        const correction = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.autotune) |*autotune| {
+            autotune.setCorrection(correction / 100.0); // Convert from 0-100 to 0.0-1.0
+            std.log.info("Auto-Tune correction: {d:.2}", .{correction});
+        }
+    }
+
+    // Reverb Controls
+    else if (std.mem.eql(u8, command, "reverb_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.reverb) |*reverb| {
+            reverb.setEnabled(enabled);
+            std.log.info("Reverb enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "reverb_room_size")) {
+        const size = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.reverb) |*reverb| {
+            reverb.setRoomSize(size / 100.0);
+            std.log.info("Reverb room size: {d:.2}", .{size});
+        }
+    } else if (std.mem.eql(u8, command, "reverb_damping")) {
+        const damping = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.reverb) |*reverb| {
+            reverb.setDamping(damping / 100.0);
+            std.log.info("Reverb damping: {d:.2}", .{damping});
+        }
+    } else if (std.mem.eql(u8, command, "reverb_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.reverb) |*reverb| {
+            reverb.setWetDry(mix / 100.0);
+            std.log.info("Reverb wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Delay Controls
+    else if (std.mem.eql(u8, command, "delay_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.delay) |*delay| {
+            delay.setEnabled(enabled);
+            std.log.info("Delay enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "delay_time_ms")) {
+        const time = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.delay) |*delay| {
+            delay.setDelayTime(time);
+            std.log.info("Delay time: {d:.1}ms", .{time});
+        }
+    } else if (std.mem.eql(u8, command, "delay_feedback")) {
+        const feedback = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.delay) |*delay| {
+            delay.setFeedback(feedback / 100.0);
+            std.log.info("Delay feedback: {d:.2}", .{feedback});
+        }
+    } else if (std.mem.eql(u8, command, "delay_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.delay) |*delay| {
+            delay.setWetDry(mix / 100.0);
+            std.log.info("Delay wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Chorus Controls
+    else if (std.mem.eql(u8, command, "chorus_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.chorus) |*chorus| {
+            chorus.setEnabled(enabled);
+            std.log.info("Chorus enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "chorus_rate")) {
+        const rate = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.chorus) |*chorus| {
+            chorus.setRate(rate);
+            std.log.info("Chorus rate: {d:.2}Hz", .{rate});
+        }
+    } else if (std.mem.eql(u8, command, "chorus_depth")) {
+        const depth = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.chorus) |*chorus| {
+            chorus.setDepth(depth / 100.0);
+            std.log.info("Chorus depth: {d:.2}", .{depth});
+        }
+    } else if (std.mem.eql(u8, command, "chorus_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.chorus) |*chorus| {
+            chorus.setWetDry(mix / 100.0);
+            std.log.info("Chorus wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Flanger Controls
+    else if (std.mem.eql(u8, command, "flanger_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.flanger) |*flanger| {
+            flanger.setEnabled(enabled);
+            std.log.info("Flanger enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "flanger_rate")) {
+        const rate = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.flanger) |*flanger| {
+            flanger.setRate(rate);
+            std.log.info("Flanger rate: {d:.2}Hz", .{rate});
+        }
+    } else if (std.mem.eql(u8, command, "flanger_depth")) {
+        const depth = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.flanger) |*flanger| {
+            flanger.setDepth(depth / 100.0);
+            std.log.info("Flanger depth: {d:.2}", .{depth});
+        }
+    } else if (std.mem.eql(u8, command, "flanger_feedback")) {
+        const feedback = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.flanger) |*flanger| {
+            flanger.setFeedback(feedback / 100.0);
+            std.log.info("Flanger feedback: {d:.2}", .{feedback});
+        }
+    } else if (std.mem.eql(u8, command, "flanger_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.flanger) |*flanger| {
+            flanger.setWetDry(mix / 100.0);
+            std.log.info("Flanger wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Phaser Controls
+    else if (std.mem.eql(u8, command, "phaser_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.phaser) |*phaser| {
+            phaser.setEnabled(enabled);
+            std.log.info("Phaser enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "phaser_rate")) {
+        const rate = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.phaser) |*phaser| {
+            phaser.setRate(rate);
+            std.log.info("Phaser rate: {d:.2}Hz", .{rate});
+        }
+    } else if (std.mem.eql(u8, command, "phaser_depth")) {
+        const depth = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.phaser) |*phaser| {
+            phaser.setDepth(depth / 100.0);
+            std.log.info("Phaser depth: {d:.2}", .{depth});
+        }
+    } else if (std.mem.eql(u8, command, "phaser_feedback")) {
+        const feedback = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.phaser) |*phaser| {
+            phaser.setFeedback(feedback / 100.0);
+            std.log.info("Phaser feedback: {d:.2}", .{feedback});
+        }
+    } else if (std.mem.eql(u8, command, "phaser_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.phaser) |*phaser| {
+            phaser.setWetDry(mix / 100.0);
+            std.log.info("Phaser wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Ring Modulator Controls
+    else if (std.mem.eql(u8, command, "ring_mod_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        ctx.effects_chain_processor.ring_mod.setEnabled(enabled);
+        std.log.info("Ring Modulator enabled: {}", .{enabled});
+    } else if (std.mem.eql(u8, command, "ring_mod_carrier_freq")) {
+        const freq = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        ctx.effects_chain_processor.ring_mod.setCarrierFreq(freq);
+        std.log.info("Ring Mod carrier freq: {d:.1}Hz", .{freq});
+    } else if (std.mem.eql(u8, command, "ring_mod_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        ctx.effects_chain_processor.ring_mod.setWetDry(mix / 100.0);
+        std.log.info("Ring Mod wet/dry: {d:.2}", .{mix});
+    }
+
+    // Vocoder Controls
+    else if (std.mem.eql(u8, command, "vocoder_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.vocoder) |*vocoder| {
+            vocoder.setEnabled(enabled);
+            std.log.info("Vocoder enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "vocoder_carrier_freq")) {
+        const freq = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.vocoder) |*vocoder| {
+            vocoder.setCarrierFreq(freq);
+            std.log.info("Vocoder carrier freq: {d:.1}Hz", .{freq});
+        }
+    } else if (std.mem.eql(u8, command, "vocoder_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.vocoder) |*vocoder| {
+            vocoder.setWetDry(mix / 100.0);
+            std.log.info("Vocoder wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Granular Controls
+    else if (std.mem.eql(u8, command, "granular_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.granular) |*granular| {
+            granular.setEnabled(enabled);
+            std.log.info("Granular enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "granular_grain_size")) {
+        const size = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.granular) |*granular| {
+            granular.setGrainSize(size);
+            std.log.info("Granular grain size: {d:.1}ms", .{size});
+        }
+    } else if (std.mem.eql(u8, command, "granular_density")) {
+        const density = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.granular) |*granular| {
+            granular.setGrainDensity(density);
+            std.log.info("Granular density: {d:.1}", .{density});
+        }
+    } else if (std.mem.eql(u8, command, "granular_pitch")) {
+        const pitch = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.granular) |*granular| {
+            granular.setGrainPitch(pitch);
+            std.log.info("Granular pitch: {d:.2}", .{pitch});
+        }
+    } else if (std.mem.eql(u8, command, "granular_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.granular) |*granular| {
+            granular.setWetDry(mix / 100.0);
+            std.log.info("Granular wet/dry: {d:.2}", .{mix});
+        }
+    }
+
+    // Bit Crusher Controls
+    else if (std.mem.eql(u8, command, "bit_crusher_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        ctx.effects_chain_processor.bit_crusher.setEnabled(enabled);
+        std.log.info("Bit Crusher enabled: {}", .{enabled});
+    } else if (std.mem.eql(u8, command, "bit_crusher_bit_depth")) {
+        const bits = std.fmt.parseInt(u32, std.mem.trim(u8, value_json, " \t\r\n"), 10) catch return;
+        ctx.effects_chain_processor.bit_crusher.setBitDepth(bits);
+        std.log.info("Bit Crusher bit depth: {}", .{bits});
+    } else if (std.mem.eql(u8, command, "bit_crusher_sample_rate_divisor")) {
+        const divisor = std.fmt.parseInt(u32, std.mem.trim(u8, value_json, " \t\r\n"), 10) catch return;
+        ctx.effects_chain_processor.bit_crusher.setSampleRateDivisor(divisor);
+        std.log.info("Bit Crusher sample rate divisor: {}", .{divisor});
+    } else if (std.mem.eql(u8, command, "bit_crusher_wet_dry")) {
+        const mix = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        ctx.effects_chain_processor.bit_crusher.setWetDry(mix / 100.0);
+        std.log.info("Bit Crusher wet/dry: {d:.2}", .{mix});
     }
 }
 

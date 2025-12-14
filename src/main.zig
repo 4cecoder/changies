@@ -4,6 +4,7 @@ const c = @cImport({
     @cInclude("pulse/error.h");
 });
 const virtual_device = @import("virtual_device.zig");
+const web_server = @import("web_server.zig");
 
 pub const ChangiesError = error{
     InitFailed,
@@ -43,6 +44,7 @@ const AudioConfig = struct {
     pitch_shift: f32 = 1.0,
     formant_shift: f32 = 1.0,
     effect: VoiceEffect = .none,
+    enable_web: bool = true,
 };
 
 const NoiseGateState = struct {
@@ -70,6 +72,12 @@ const AudioContext = struct {
     allocator: std.mem.Allocator,
     running: std.atomic.Value(bool),
     noise_gate_state: NoiseGateState,
+    // Audio statistics (thread-safe atomic storage)
+    input_rms: std.atomic.Value(f32),
+    input_peak: std.atomic.Value(f32),
+    output_rms: std.atomic.Value(f32),
+    output_peak: std.atomic.Value(f32),
+    web_srv: ?*web_server.WebServer,
 
     pub fn init(allocator: std.mem.Allocator, config: AudioConfig) !AudioContext {
         return AudioContext{
@@ -79,6 +87,11 @@ const AudioContext = struct {
             .allocator = allocator,
             .running = std.atomic.Value(bool).init(false),
             .noise_gate_state = NoiseGateState.init(config.sample_rate),
+            .input_rms = std.atomic.Value(f32).init(0.0),
+            .input_peak = std.atomic.Value(f32).init(0.0),
+            .output_rms = std.atomic.Value(f32).init(0.0),
+            .output_peak = std.atomic.Value(f32).init(0.0),
+            .web_srv = null,
         };
     }
 
@@ -145,9 +158,68 @@ const AudioContext = struct {
             self.pa_output = null;
         }
     }
+
+    pub fn updateInputStats(self: *AudioContext, buffer: []f32) void {
+        const rms = calculateRms(buffer);
+        const peak = calculatePeak(buffer);
+        self.input_rms.store(rms, .monotonic);
+        self.input_peak.store(peak, .monotonic);
+    }
+
+    pub fn updateOutputStats(self: *AudioContext, buffer: []f32) void {
+        const rms = calculateRms(buffer);
+        const peak = calculatePeak(buffer);
+        self.output_rms.store(rms, .monotonic);
+        self.output_peak.store(peak, .monotonic);
+    }
+
+    pub fn getStats(self: *AudioContext) web_server.AudioStats {
+        return web_server.AudioStats{
+            .input_rms = self.input_rms.load(.monotonic),
+            .input_peak = self.input_peak.load(.monotonic),
+            .output_rms = self.output_rms.load(.monotonic),
+            .output_peak = self.output_peak.load(.monotonic),
+            .gate_open = if (self.noise_gate_state.envelope > 0.5) 1 else 0,
+            .processing_time_us = 0, // Will be calculated in audio thread
+        };
+    }
+
+    pub fn setEffect(self: *AudioContext, effect: VoiceEffect) void {
+        self.config.effect = effect;
+        std.log.info("Effect changed to: {s}", .{@tagName(effect)});
+    }
+
+    pub fn setPitchShift(self: *AudioContext, pitch: f32) void {
+        self.config.pitch_shift = pitch;
+        std.log.info("Pitch shift changed to: {d:.2}", .{pitch});
+    }
+
+    pub fn setNoiseGateThreshold(self: *AudioContext, threshold: f32) void {
+        self.noise_gate_state.threshold = threshold;
+        std.log.info("Noise gate threshold changed to: {d:.4}", .{threshold});
+    }
 };
 
 // Audio processing functions
+
+fn calculateRms(buffer: []f32) f32 {
+    var sum_squares: f32 = 0.0;
+    for (buffer) |sample| {
+        sum_squares += sample * sample;
+    }
+    return @sqrt(sum_squares / @as(f32, @floatFromInt(buffer.len)));
+}
+
+fn calculatePeak(buffer: []f32) f32 {
+    var peak: f32 = 0.0;
+    for (buffer) |sample| {
+        const abs_sample: f32 = @abs(sample);
+        if (abs_sample > peak) {
+            peak = abs_sample;
+        }
+    }
+    return peak;
+}
 
 // Hermite cubic interpolation for smoother pitch shifting
 fn hermiteInterpolate(y0: f32, y1: f32, y2: f32, y3: f32, mu: f32) f32 {
@@ -328,11 +400,16 @@ fn audioProcessingThread(ctx: *AudioContext) void {
             var error_code: c_int = 0;
             const bytes_to_read = buffer_size * @sizeOf(f32);
 
+            const start_time = std.time.Instant.now() catch unreachable;
+
             if (c.pa_simple_read(pa_in, input_buffer.ptr, bytes_to_read, &error_code) < 0) {
                 std.log.err("PulseAudio read error: {s}", .{c.pa_strerror(error_code)});
-                std.posix.nanosleep(10 * std.time.ns_per_ms, 0);
+                std.posix.nanosleep(0, 10 * std.time.ns_per_ms);
                 continue;
             }
+
+            // Update input statistics
+            ctx.updateInputStats(input_buffer);
 
             // Process audio
             @memcpy(output_buffer, input_buffer);
@@ -345,6 +422,20 @@ fn audioProcessingThread(ctx: *AudioContext) void {
             }
 
             applySoftLimiter(output_buffer); // Prevent clipping, ensure clean signal
+
+            // Update output statistics
+            ctx.updateOutputStats(output_buffer);
+
+            // Calculate processing time
+            const end_time = std.time.Instant.now() catch unreachable;
+            const processing_time_us: u64 = @intCast(end_time.since(start_time) / 1000);
+
+            // Update web server stats if enabled
+            if (ctx.web_srv) |srv| {
+                var stats = ctx.getStats();
+                stats.processing_time_us = processing_time_us;
+                srv.updateStats(stats);
+            }
 
             // Write to output
             if (ctx.pa_output) |pa_out| {
@@ -370,12 +461,18 @@ fn printHelp() void {
         \\                           [none, male, female, robot, alien, deep, high]
         \\  -p, --pitch <FACTOR>     Custom pitch shift factor (0.5-2.0)
         \\  -i, --input <DEVICE>     PulseAudio input device name
+        \\  --no-web                 Disable web control interface
         \\  -h, --help               Show this help message
         \\
         \\Examples:
         \\  changies --effect male
         \\  changies --effect custom --pitch 1.5
         \\  changies --input alsa_input.usb-Device-02.mono-fallback
+        \\  changies --no-web --effect female
+        \\
+        \\Web Interface:
+        \\  By default, web interface runs on http://localhost:8080
+        \\  Use --no-web to disable the web interface
         \\
     , .{});
 }
@@ -419,6 +516,8 @@ pub fn main() !void {
                 std.log.err("Missing argument for --input", .{});
                 return error.InvalidArgument;
             };
+        } else if (std.mem.eql(u8, arg, "--no-web")) {
+            config.enable_web = false;
         }
     }
 
@@ -435,15 +534,45 @@ pub fn main() !void {
     try ctx.initAudio(input_device, vdev.getSinkName());
     defer ctx.cleanup();
 
+    // Start web server if enabled
+    var web_srv: ?web_server.WebServer = null;
+    var web_thread: ?std.Thread = null;
+
+    if (config.enable_web) {
+        const exe_dir = try std.fs.selfExeDirPathAlloc(allocator);
+        defer allocator.free(exe_dir);
+
+        const web_dir = try std.fmt.allocPrint(allocator, "{s}/../web", .{exe_dir});
+        defer allocator.free(web_dir);
+
+        web_srv = web_server.WebServer.init(allocator, 8080, web_dir);
+
+        // Simple command handling through globals (thread-safe via atomics)
+        ctx.web_srv = &web_srv.?;
+
+        web_thread = try web_srv.?.start();
+        std.log.info("Web interface available at http://localhost:8080", .{});
+    }
+
     ctx.running.store(true, .monotonic);
 
-    const thread = try std.Thread.spawn(.{}, audioProcessingThread, .{&ctx});
+    const audio_thread = try std.Thread.spawn(.{}, audioProcessingThread, .{&ctx});
 
     std.log.info("Voice changer running. Press Ctrl+C to stop...", .{});
+    if (config.enable_web) {
+        std.log.info("Open http://localhost:8080 in your browser to control", .{});
+    }
 
     // Wait for Ctrl+C (sleep for a very long time)
     std.posix.nanosleep(std.math.maxInt(u63), 0);
 
     ctx.running.store(false, .monotonic);
-    thread.join();
+    audio_thread.join();
+
+    if (web_srv) |*srv| {
+        srv.stop();
+        if (web_thread) |thread| {
+            thread.join();
+        }
+    }
 }

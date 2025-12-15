@@ -184,6 +184,384 @@
                 </div>
             </section>
 
+            <!-- PROFESSIONAL MUSIC PRODUCTION EFFECTS -->
+
+            <!-- DENOISER SECTION (AI-powered noise reduction) -->
+            <section class="section collapsed" id="denoiser-section">
+                <div class="section-header" onclick="toggleSection('denoiser-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🔇 AI DENOISER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="denoiser-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Reduction:</label>
+                        <input type="range" id="denoiser-reduction" min="0" max="100" step="1" value="70">
+                        <span id="denoiser-reduction-value" class="control-value">70%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Threshold:</label>
+                        <input type="range" id="denoiser-threshold" min="0" max="100" step="1" value="5">
+                        <span id="denoiser-threshold-value" class="control-value">5%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Smoothing:</label>
+                        <input type="range" id="denoiser-smoothing" min="0" max="100" step="1" value="95">
+                        <span id="denoiser-smoothing-value" class="control-value">95%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VOCAL RIDER SECTION (Automatic gain control) -->
+            <section class="section collapsed" id="vocal-rider-section">
+                <div class="section-header" onclick="toggleSection('vocal-rider-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🎚️ VOCAL RIDER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="vocal-rider-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Target Level:</label>
+                        <input type="range" id="vocal-rider-target" min="1" max="100" step="1" value="30">
+                        <span id="vocal-rider-target-value" class="control-value">30%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Sensitivity:</label>
+                        <input type="range" id="vocal-rider-sensitivity" min="0" max="100" step="1" value="50">
+                        <span id="vocal-rider-sensitivity-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Current Gain:</label>
+                        <span id="vocal-rider-gain-display" class="control-value">0.0 dB</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- AUTO-TUNE SECTION -->
+            <section class="section collapsed" id="autotune-section">
+                <div class="section-header" onclick="toggleSection('autotune-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🎵 AUTO-TUNE</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="autotune-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Key:</label>
+                        <select id="autotune-key" class="effect-select">
+                            <option value="C">C</option>
+                            <option value="C#">C#/Db</option>
+                            <option value="D">D</option>
+                            <option value="D#">D#/Eb</option>
+                            <option value="E">E</option>
+                            <option value="F">F</option>
+                            <option value="F#">F#/Gb</option>
+                            <option value="G">G</option>
+                            <option value="G#">G#/Ab</option>
+                            <option value="A">A</option>
+                            <option value="A#">A#/Bb</option>
+                            <option value="B">B</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label>Scale:</label>
+                        <select id="autotune-scale" class="effect-select">
+                            <option value="chromatic">Chromatic</option>
+                            <option value="major" selected>Major</option>
+                            <option value="minor">Minor</option>
+                            <option value="dorian">Dorian</option>
+                            <option value="phrygian">Phrygian</option>
+                            <option value="lydian">Lydian</option>
+                            <option value="mixolydian">Mixolydian</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <label>Retune Speed:</label>
+                        <input type="range" id="autotune-retune-speed" min="0" max="100" step="1" value="50">
+                        <span id="autotune-retune-speed-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Correction:</label>
+                        <input type="range" id="autotune-correction" min="0" max="100" step="1" value="100">
+                        <span id="autotune-correction-value" class="control-value">100%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- REVERB SECTION -->
+            <section class="section collapsed" id="reverb-section">
+                <div class="section-header" onclick="toggleSection('reverb-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🌊 REVERB</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="reverb-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Room Size:</label>
+                        <input type="range" id="reverb-room-size" min="0" max="100" step="1" value="50">
+                        <span id="reverb-room-size-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Damping:</label>
+                        <input type="range" id="reverb-damping" min="0" max="100" step="1" value="50">
+                        <span id="reverb-damping-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="reverb-wet-dry" min="0" max="100" step="1" value="30">
+                        <span id="reverb-wet-dry-value" class="control-value">30%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DELAY SECTION -->
+            <section class="section collapsed" id="delay-section">
+                <div class="section-header" onclick="toggleSection('delay-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>⏱️ DELAY</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="delay-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Time:</label>
+                        <input type="range" id="delay-time" min="0" max="2000" step="10" value="250">
+                        <span id="delay-time-value" class="control-value">250 ms</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Feedback:</label>
+                        <input type="range" id="delay-feedback" min="0" max="95" step="1" value="30">
+                        <span id="delay-feedback-value" class="control-value">30%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="delay-wet-dry" min="0" max="100" step="1" value="30">
+                        <span id="delay-wet-dry-value" class="control-value">30%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CHORUS SECTION -->
+            <section class="section collapsed" id="chorus-section">
+                <div class="section-header" onclick="toggleSection('chorus-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🎸 CHORUS</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="chorus-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Rate:</label>
+                        <input type="range" id="chorus-rate" min="0.1" max="10" step="0.1" value="1.5">
+                        <span id="chorus-rate-value" class="control-value">1.5 Hz</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Depth:</label>
+                        <input type="range" id="chorus-depth" min="0" max="100" step="1" value="50">
+                        <span id="chorus-depth-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="chorus-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="chorus-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- FLANGER SECTION -->
+            <section class="section collapsed" id="flanger-section">
+                <div class="section-header" onclick="toggleSection('flanger-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>✈️ FLANGER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="flanger-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Rate:</label>
+                        <input type="range" id="flanger-rate" min="0.1" max="10" step="0.1" value="0.5">
+                        <span id="flanger-rate-value" class="control-value">0.5 Hz</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Depth:</label>
+                        <input type="range" id="flanger-depth" min="0" max="100" step="1" value="70">
+                        <span id="flanger-depth-value" class="control-value">70%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Feedback:</label>
+                        <input type="range" id="flanger-feedback" min="0" max="100" step="1" value="50">
+                        <span id="flanger-feedback-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="flanger-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="flanger-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PHASER SECTION -->
+            <section class="section collapsed" id="phaser-section">
+                <div class="section-header" onclick="toggleSection('phaser-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🌀 PHASER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="phaser-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Rate:</label>
+                        <input type="range" id="phaser-rate" min="0.1" max="10" step="0.1" value="0.4">
+                        <span id="phaser-rate-value" class="control-value">0.4 Hz</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Depth:</label>
+                        <input type="range" id="phaser-depth" min="0" max="100" step="1" value="50">
+                        <span id="phaser-depth-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Feedback:</label>
+                        <input type="range" id="phaser-feedback" min="0" max="100" step="1" value="50">
+                        <span id="phaser-feedback-value" class="control-value">50%</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="phaser-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="phaser-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RING MODULATOR SECTION -->
+            <section class="section collapsed" id="ring-mod-section">
+                <div class="section-header" onclick="toggleSection('ring-mod-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🔔 RING MODULATOR</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="ring-mod-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Carrier Freq:</label>
+                        <input type="range" id="ring-mod-carrier-freq" min="20" max="5000" step="10" value="100">
+                        <span id="ring-mod-carrier-freq-value" class="control-value">100 Hz</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="ring-mod-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="ring-mod-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VOCODER SECTION -->
+            <section class="section collapsed" id="vocoder-section">
+                <div class="section-header" onclick="toggleSection('vocoder-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🤖 VOCODER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="vocoder-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Carrier Freq:</label>
+                        <input type="range" id="vocoder-carrier-freq" min="50" max="500" step="5" value="120">
+                        <span id="vocoder-carrier-freq-value" class="control-value">120 Hz</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="vocoder-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="vocoder-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- GRANULAR SECTION -->
+            <section class="section collapsed" id="granular-section">
+                <div class="section-header" onclick="toggleSection('granular-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🍄 GRANULAR</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="granular-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Grain Size:</label>
+                        <input type="range" id="granular-grain-size" min="10" max="200" step="5" value="50">
+                        <span id="granular-grain-size-value" class="control-value">50 ms</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Density:</label>
+                        <input type="range" id="granular-density" min="1" max="100" step="1" value="20">
+                        <span id="granular-density-value" class="control-value">20</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Pitch:</label>
+                        <input type="range" id="granular-pitch" min="0.5" max="2.0" step="0.05" value="1.0">
+                        <span id="granular-pitch-value" class="control-value">1.00</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="granular-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="granular-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- BIT CRUSHER SECTION -->
+            <section class="section collapsed" id="bit-crusher-section">
+                <div class="section-header" onclick="toggleSection('bit-crusher-section')">
+                    <span class="collapse-icon">▶</span>
+                    <h2>🎮 BIT CRUSHER</h2>
+                    <label class="toggle-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="bit-crusher-enabled">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label>Bit Depth:</label>
+                        <input type="range" id="bit-crusher-bit-depth" min="1" max="16" step="1" value="16">
+                        <span id="bit-crusher-bit-depth-value" class="control-value">16 bits</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Sample Rate Div:</label>
+                        <input type="range" id="bit-crusher-sample-rate-divisor" min="1" max="32" step="1" value="1">
+                        <span id="bit-crusher-sample-rate-divisor-value" class="control-value">1x</span>
+                    </div>
+                    <div class="control-row">
+                        <label>Wet/Dry:</label>
+                        <input type="range" id="bit-crusher-wet-dry" min="0" max="100" step="1" value="50">
+                        <span id="bit-crusher-wet-dry-value" class="control-value">50%</span>
+                    </div>
+                </div>
+            </section>
+
             <!-- STATS SECTION -->
             <section class="section collapsed" id="stats-section">
                 <div class="section-header" onclick="toggleSection('stats-section')">

@@ -1,2 +1,24 @@
+# Zig build outputs
 .zig-cache/
 zig-out/
+
+# Temporary files
+*.log
+*.tmp
+/tmp/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Application logs
+/logs/
+changies.log
+changies_*.log

@@ -515,9 +515,31 @@ fn applyEffect(buffer: []f32, effect: VoiceEffect, config: AudioConfig, temp_buf
             @memcpy(buffer, temp_buffer);
         },
         .female => {
-            applyFormantFilter(buffer, 1.3);
-            pitchShift(buffer, 1.2, temp_buffer);
+            // Enhanced female voice - smooth and natural
+            // 1. Pitch shift to female range (1.15x for natural sound)
+            pitchShift(buffer, 1.15, temp_buffer);
             @memcpy(buffer, temp_buffer);
+
+            // 2. Apply formant shifting for female timbre (1.22x)
+            applyFormantFilter(buffer, 1.22);
+
+            // 3. Gentle compression and warmth for smoothness
+            for (buffer) |*sample| {
+                const abs_sample = @abs(sample.*);
+
+                // Gentle compression on peaks for smoothness
+                const compressed = if (abs_sample > 0.35)
+                    sample.* * 0.88  // Gentle reduction on peaks
+                else
+                    sample.*;
+
+                // Add subtle warmth (harmonic enhancement)
+                const warmth: f32 = 1.0 + (compressed * compressed * 0.08);
+                sample.* = compressed * warmth;
+
+                // Soft limiting
+                sample.* = std.math.clamp(sample.*, -0.95, 0.95);
+            }
         },
         .robot => {
             for (buffer) |*sample| {
@@ -779,6 +801,51 @@ fn webCommandHandler(command: []const u8, value_json: []const u8) void {
     }
 
     // ===== PROFESSIONAL MUSIC PRODUCTION EFFECTS =====
+
+    // Denoiser Controls
+    else if (std.mem.eql(u8, command, "denoiser_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        if (ctx.effects_chain_processor.getDenoiser()) |denoiser| {
+            denoiser.setEnabled(enabled);
+            std.log.info("Denoiser enabled: {}", .{enabled});
+        }
+    } else if (std.mem.eql(u8, command, "denoiser_reduction")) {
+        const reduction = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.getDenoiser()) |denoiser| {
+            denoiser.setReductionAmount(reduction);
+            std.log.info("Denoiser reduction: {d:.2}", .{reduction});
+        }
+    } else if (std.mem.eql(u8, command, "denoiser_threshold")) {
+        const threshold = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.getDenoiser()) |denoiser| {
+            denoiser.setThreshold(threshold);
+            std.log.info("Denoiser threshold: {d:.2}", .{threshold});
+        }
+    } else if (std.mem.eql(u8, command, "denoiser_smoothing")) {
+        const smoothing = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        if (ctx.effects_chain_processor.getDenoiser()) |denoiser| {
+            denoiser.setSmoothing(smoothing);
+            std.log.info("Denoiser smoothing: {d:.2}", .{smoothing});
+        }
+    }
+
+    // Vocal Rider Controls
+    else if (std.mem.eql(u8, command, "vocal_rider_enabled")) {
+        const enabled = std.mem.indexOf(u8, value_json, "true") != null;
+        const vocal_rider = ctx.effects_chain_processor.getVocalRider();
+        vocal_rider.setEnabled(enabled);
+        std.log.info("Vocal Rider enabled: {}", .{enabled});
+    } else if (std.mem.eql(u8, command, "vocal_rider_target")) {
+        const target = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        const vocal_rider = ctx.effects_chain_processor.getVocalRider();
+        vocal_rider.setTargetLevel(target);
+        std.log.info("Vocal Rider target: {d:.2}", .{target});
+    } else if (std.mem.eql(u8, command, "vocal_rider_sensitivity")) {
+        const sensitivity = std.fmt.parseFloat(f32, std.mem.trim(u8, value_json, " \t\r\n")) catch return;
+        const vocal_rider = ctx.effects_chain_processor.getVocalRider();
+        vocal_rider.setSensitivity(sensitivity);
+        std.log.info("Vocal Rider sensitivity: {d:.2}", .{sensitivity});
+    }
 
     // Auto-Tune Controls
     else if (std.mem.eql(u8, command, "autotune_enabled")) {

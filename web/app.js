@@ -126,8 +126,195 @@ class ChangiesClient {
             console.log('Latency compensation:', latency_ms, 'ms');
         });
 
+        // === PROFESSIONAL MUSIC PRODUCTION EFFECTS ===
+
+        // DENOISER
+        this.setupToggle('denoiser-enabled', 'denoiser_enabled');
+        this.setupRangePercent('denoiser-reduction', 'denoiser_reduction', '%');
+        this.setupRangePercent('denoiser-threshold', 'denoiser_threshold', '%');
+        this.setupRangePercent('denoiser-smoothing', 'denoiser_smoothing', '%');
+
+        // VOCAL RIDER
+        this.setupToggle('vocal-rider-enabled', 'vocal_rider_enabled');
+        this.setupRangePercent('vocal-rider-target', 'vocal_rider_target', '%');
+        this.setupRangePercent('vocal-rider-sensitivity', 'vocal_rider_sensitivity', '%');
+
+        // AUTO-TUNE
+        this.setupToggle('autotune-enabled', 'autotune_enabled');
+        this.setupSelect('autotune-key', 'autotune_key');
+        this.setupSelect('autotune-scale', 'autotune_scale');
+        this.setupRangePercent('autotune-retune-speed', 'autotune_retune_speed', '%');
+        this.setupRangePercent('autotune-correction', 'autotune_correction', '%');
+
+        // REVERB
+        this.setupToggle('reverb-enabled', 'reverb_enabled');
+        this.setupRangePercent('reverb-room-size', 'reverb_room_size', '%');
+        this.setupRangePercent('reverb-damping', 'reverb_damping', '%');
+        this.setupRangePercent('reverb-wet-dry', 'reverb_wet_dry', '%');
+
+        // DELAY
+        this.setupToggle('delay-enabled', 'delay_enabled');
+        this.setupRangeMs('delay-time', 'delay_time', ' ms');
+        this.setupRangePercent('delay-feedback', 'delay_feedback', '%');
+        this.setupRangePercent('delay-wet-dry', 'delay_wet_dry', '%');
+
+        // CHORUS
+        this.setupToggle('chorus-enabled', 'chorus_enabled');
+        this.setupRangeHz('chorus-rate', 'chorus_rate', ' Hz');
+        this.setupRangePercent('chorus-depth', 'chorus_depth', '%');
+        this.setupRangePercent('chorus-wet-dry', 'chorus_wet_dry', '%');
+
+        // FLANGER
+        this.setupToggle('flanger-enabled', 'flanger_enabled');
+        this.setupRangeHz('flanger-rate', 'flanger_rate', ' Hz');
+        this.setupRangePercent('flanger-depth', 'flanger_depth', '%');
+        this.setupRangePercent('flanger-feedback', 'flanger_feedback', '%');
+        this.setupRangePercent('flanger-wet-dry', 'flanger_wet_dry', '%');
+
+        // PHASER
+        this.setupToggle('phaser-enabled', 'phaser_enabled');
+        this.setupRangeHz('phaser-rate', 'phaser_rate', ' Hz');
+        this.setupRangePercent('phaser-depth', 'phaser_depth', '%');
+        this.setupRangePercent('phaser-feedback', 'phaser_feedback', '%');
+        this.setupRangePercent('phaser-wet-dry', 'phaser_wet_dry', '%');
+
+        // RING MODULATOR
+        this.setupToggle('ring-mod-enabled', 'ring_mod_enabled');
+        this.setupRangeHz('ring-mod-carrier-freq', 'ring_mod_carrier_freq', ' Hz');
+        this.setupRangePercent('ring-mod-wet-dry', 'ring_mod_wet_dry', '%');
+
+        // VOCODER
+        this.setupToggle('vocoder-enabled', 'vocoder_enabled');
+        this.setupRangeHz('vocoder-carrier-freq', 'vocoder_carrier_freq', ' Hz');
+        this.setupRangePercent('vocoder-wet-dry', 'vocoder_wet_dry', '%');
+
+        // GRANULAR
+        this.setupToggle('granular-enabled', 'granular_enabled');
+        this.setupRangeMs('granular-grain-size', 'granular_grain_size', ' ms');
+        this.setupRangeRaw('granular-density', 'granular_density', '');
+        this.setupRangeFloat('granular-pitch', 'granular_pitch', '');
+        this.setupRangePercent('granular-wet-dry', 'granular_wet_dry', '%');
+
+        // BIT CRUSHER
+        this.setupToggle('bit-crusher-enabled', 'bit_crusher_enabled');
+        this.setupRangeBits('bit-crusher-bit-depth', 'bit_crusher_bit_depth', ' bits');
+        this.setupRangeDivisor('bit-crusher-sample-rate-divisor', 'bit_crusher_sample_rate_divisor', 'x');
+        this.setupRangePercent('bit-crusher-wet-dry', 'bit_crusher_wet_dry', '%');
+
         // Initialize with broadcast preset display
         this.updatePresetDisplay('broadcast');
+    }
+
+    // === HELPER FUNCTIONS FOR EFFECT CONTROLS ===
+
+    setupToggle(elementId, command) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.addEventListener('change', (e) => {
+                this.sendCommand(command, e.target.checked);
+            });
+        }
+    }
+
+    setupSelect(elementId, command) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.addEventListener('change', (e) => {
+                this.sendCommand(command, e.target.value);
+            });
+        }
+    }
+
+    setupRangePercent(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = e.target.value + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                const normalizedValue = parseFloat(e.target.value) / 100.0;
+                this.sendCommand(command, normalizedValue);
+            });
+        }
+    }
+
+    setupRangeMs(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = e.target.value + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseFloat(e.target.value));
+            });
+        }
+    }
+
+    setupRangeHz(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = parseFloat(e.target.value).toFixed(1) + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseFloat(e.target.value));
+            });
+        }
+    }
+
+    setupRangeRaw(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = e.target.value + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseFloat(e.target.value));
+            });
+        }
+    }
+
+    setupRangeFloat(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = parseFloat(e.target.value).toFixed(2) + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseFloat(e.target.value));
+            });
+        }
+    }
+
+    setupRangeBits(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = e.target.value + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseInt(e.target.value));
+            });
+        }
+    }
+
+    setupRangeDivisor(elementId, command, suffix) {
+        const slider = document.getElementById(elementId);
+        const valueDisplay = document.getElementById(elementId + '-value');
+        if (slider && valueDisplay) {
+            slider.addEventListener('input', (e) => {
+                valueDisplay.textContent = e.target.value + suffix;
+            });
+            slider.addEventListener('change', (e) => {
+                this.sendCommand(command, parseInt(e.target.value));
+            });
+        }
     }
 
     async loadDevices() {

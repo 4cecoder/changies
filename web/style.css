@@ -578,3 +578,32 @@ input:checked ~ .toggle-label {
     background: var(--bg-dark);
     color: var(--text-primary);
 }
+
+/* Effect Select (for dropdowns in music production effects) */
+.effect-select {
+    padding: 6px 10px;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.effect-select:hover {
+    border-color: var(--accent-cyan);
+}
+
+.effect-select:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan);
+}
+
+.effect-select option {
+    background: var(--bg-dark);
+    color: var(--text-primary);
+}
